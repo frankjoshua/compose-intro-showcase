@@ -68,12 +68,18 @@ afterEvaluate {
         }
     }
 }
-signing {
-    useInMemoryPgpKeys(
-            rootProject.ext["signing.keyId"],
-            rootProject.ext["signing.key"],
-            rootProject.ext["signing.password"],
-    )
 
-    sign publishing.publications
+// Only sign if credentials are provided
+if (rootProject.ext["signing.keyId"] && rootProject.ext["signing.key"]) {
+    signing {
+        useInMemoryPgpKeys(
+                rootProject.ext["signing.keyId"],
+                rootProject.ext["signing.key"],
+                rootProject.ext["signing.password"],
+        )
+
+        sign publishing.publications
+    }
+} else {
+    println("Signing disabled - no PGP credentials found")
 }
