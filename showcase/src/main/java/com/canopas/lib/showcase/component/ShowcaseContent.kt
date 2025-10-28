@@ -85,9 +85,13 @@ internal fun ShowcaseContent(
 
     val targetCords = target.coordinates
     
-    // Capture the bounds - coordinates should be attached when this function is called
-    val targetRect = remember(target) { 
-        targetCords.boundsInWindow()
+    // Use the target revision to trigger recomputation when coordinates change
+    val targetRect = remember(target.revision) { 
+        if (targetCords.isAttached) {
+            targetCords.boundsInWindow()
+        } else {
+            Rect.Zero
+        }
     }
 
     var dismissShowcaseRequest by remember(target) { mutableStateOf(false) }
@@ -294,7 +298,8 @@ data class IntroShowcaseTargets(
     val index: Int,
     val coordinates: LayoutCoordinates,
     val style: ShowcaseStyle = ShowcaseStyle.Default,
-    val content: @Composable BoxScope.() -> Unit
+    val content: @Composable BoxScope.() -> Unit,
+    val revision: Long = System.currentTimeMillis() // Add revision to track updates
 )
 
 class ShowcaseStyle(

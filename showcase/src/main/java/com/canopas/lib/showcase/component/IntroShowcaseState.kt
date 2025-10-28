@@ -43,7 +43,8 @@ internal fun Modifier.introShowcaseTarget(
         index = index,
         coordinates = coordinates,
         style = style,
-        content = content
+        content = content,
+        revision = System.currentTimeMillis() // Update revision when coordinates change
     )
 }
 
