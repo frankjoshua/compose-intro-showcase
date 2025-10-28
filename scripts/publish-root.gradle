@@ -32,6 +32,11 @@ if (secretPropsFile.exists()) {
     ext["publish_version"] = System.getenv('PUBLISH_VERSION')
 }
 
+// JitPack passes version via -Pversion parameter, use it if available
+if (project.hasProperty('version') && project.version != 'unspecified') {
+    ext["publish_version"] = project.version
+}
+
 // Set up Sonatype repository
 nexusPublishing {
     repositories {
