@@ -51,7 +51,16 @@ fun ShowcasePopup(
     onShowCaseCompleted: () -> Unit,
 ) {
     state.currentTarget?.let { target ->
-        if (target.coordinates.isAttached) {
+        // Monitor if coordinates are attached and only show window when they are
+        var isAttached by remember(target) { mutableStateOf(target.coordinates.isAttached) }
+        
+        // Update attachment state when coordinates change
+        LaunchedEffect(target) {
+            isAttached = target.coordinates.isAttached
+        }
+        
+        // Only show the showcase window when coordinates are attached
+        if (isAttached) {
             ShowcaseWindow {
                 ShowcaseContent(
                     target = target,
@@ -76,12 +85,7 @@ internal fun ShowcaseContent(
 
     val targetCords = target.coordinates
     
-    // Check if coordinates are still attached before accessing bounds
-    if (!targetCords.isAttached) {
-        return
-    }
-    
-    // Capture the bounds once when attached - this is safer than repeated access
+    // Capture the bounds - coordinates should be attached when this function is called
     val targetRect = remember(target) { 
         targetCords.boundsInWindow()
     }
