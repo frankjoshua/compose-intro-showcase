@@ -50,11 +50,11 @@ fun ShowcasePopup(
     dismissOnClickOutside: Boolean,
     onShowCaseCompleted: () -> Unit,
 ) {
-    state.currentTarget?.let {
-        if (it.coordinates.isAttached) {
+    state.currentTarget?.let { target ->
+        if (target.coordinates.isAttached) {
             ShowcaseWindow {
                 ShowcaseContent(
-                    target = it,
+                    target = target,
                     dismissOnClickOutside = dismissOnClickOutside
                 ) {
                     state.currentTargetIndex++
@@ -75,7 +75,16 @@ internal fun ShowcaseContent(
 ) {
 
     val targetCords = target.coordinates
-    val targetRect = targetCords.boundsInWindow()
+    
+    // Check if coordinates are still attached before accessing bounds
+    if (!targetCords.isAttached) {
+        return
+    }
+    
+    // Capture the bounds once when attached - this is safer than repeated access
+    val targetRect = remember(target) { 
+        targetCords.boundsInWindow()
+    }
 
     var dismissShowcaseRequest by remember(target) { mutableStateOf(false) }
 
@@ -212,10 +221,13 @@ internal fun ShowcaseContent(
         }
 
         ShowCaseText(target, targetRect, targetRadius) { textCoords ->
-            val contentRect = textCoords.boundsInWindow()
-            val outerRect = getOuterRect(contentRect, targetRect)
-            outerOffset = outerRect.center
-            outerRadius = getOuterRadius(outerRect) + targetRadius
+            // Check if coordinates are still attached before accessing bounds
+            if (textCoords.isAttached) {
+                val contentRect = textCoords.boundsInWindow()
+                val outerRect = getOuterRect(contentRect, targetRect)
+                outerOffset = outerRect.center
+                outerRadius = getOuterRadius(outerRect) + targetRadius
+            }
         }
     }
 }
