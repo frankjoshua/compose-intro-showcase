@@ -2,12 +2,15 @@ package com.canopas.lib.showcase.component
 
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.boundsInWindow
@@ -41,23 +44,33 @@ internal fun Modifier.introShowcaseTarget(
     index: Int,
     style: ShowcaseStyle = ShowcaseStyle.Default,
     content: @Composable BoxScope.() -> Unit,
-): Modifier = onGloballyPositioned { coordinates ->
-    if (!coordinates.isAttached) return@onGloballyPositioned
-    
-    val rootRect = coordinates.boundsInRoot()
-    val winRect = coordinates.boundsInWindow()
+): Modifier = composed {
+    val styleState = rememberUpdatedState(style)
+    val contentState = rememberUpdatedState(content)
 
-    // Only update state when the rect really changed to avoid churn
-    val prev = state.targets[index]
-    if (prev == null || prev.rectInRoot != rootRect || prev.rectInWindow != winRect) {
-        state.targets[index] = TargetInfo(
-            index = index,
-            rectInRoot = rootRect,
-            rectInWindow = winRect,
-            style = style,
-            content = content,
-            revision = System.nanoTime()
-        )
+    // Remove this target when it leaves composition (e.g., during navigation)
+    DisposableEffect(state, index) {
+        onDispose { state.targets.remove(index) }
+    }
+
+    onGloballyPositioned { coordinates ->
+        if (!coordinates.isAttached) return@onGloballyPositioned
+        
+        val rootRect = coordinates.boundsInRoot()
+        val winRect = coordinates.boundsInWindow()
+
+        // Only update state when the rect really changed to avoid churn
+        val prev = state.targets[index]
+        if (prev == null || prev.rectInRoot != rootRect || prev.rectInWindow != winRect) {
+            state.targets[index] = TargetInfo(
+                index = index,
+                rectInRoot = rootRect,
+                rectInWindow = winRect,
+                style = styleState.value,
+                content = contentState.value,
+                revision = System.nanoTime()
+            )
+        }
     }
 }
 
