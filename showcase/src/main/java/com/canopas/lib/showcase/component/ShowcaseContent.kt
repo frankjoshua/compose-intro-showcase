@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -51,25 +53,14 @@ fun ShowcasePopup(
     onShowCaseCompleted: () -> Unit,
 ) {
     state.currentTarget?.let { target ->
-        // Monitor if coordinates are attached and only show window when they are
-        var isAttached by remember(target) { mutableStateOf(target.coordinates.isAttached) }
-        
-        // Update attachment state when coordinates change
-        LaunchedEffect(target) {
-            isAttached = target.coordinates.isAttached
-        }
-        
-        // Only show the showcase window when coordinates are attached
-        if (isAttached) {
-            ShowcaseWindow {
-                ShowcaseContent(
-                    target = target,
-                    dismissOnClickOutside = dismissOnClickOutside
-                ) {
-                    state.currentTargetIndex++
-                    if (state.currentTarget == null) {
-                        onShowCaseCompleted()
-                    }
+        ShowcaseWindow {
+            ShowcaseContent(
+                target = target,
+                dismissOnClickOutside = dismissOnClickOutside
+            ) {
+                state.currentTargetIndex++
+                if (state.currentTarget == null) {
+                    onShowCaseCompleted()
                 }
             }
         }
@@ -78,26 +69,34 @@ fun ShowcasePopup(
 
 @Composable
 internal fun ShowcaseContent(
-    target: IntroShowcaseTargets,
+    target: TargetInfo,
     dismissOnClickOutside: Boolean,
     onShowcaseCompleted: () -> Unit
 ) {
+    var overlayCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var dismissShowcaseRequest by remember(target) { mutableStateOf(false) }
 
-    val targetCords = target.coordinates
-    
-    // Use the target revision to trigger recomputation when coordinates change
-    val targetRect = remember(target.revision) { 
-        if (targetCords.isAttached) {
-            targetCords.boundsInWindow()
-        } else {
-            Rect.Zero
+    // Convert window coordinates to overlay local space
+    // Use derivedStateOf to ensure targetRect is always current when accessed
+    val targetRect by remember(target.revision) {
+        derivedStateOf {
+            val oc = overlayCoords
+            if (oc?.isAttached == true) {
+                val overlayTopLeftWin = oc.positionInWindow()
+                val r = target.rectInWindow
+                Rect(
+                    r.left - overlayTopLeftWin.x,
+                    r.top - overlayTopLeftWin.y,
+                    r.right - overlayTopLeftWin.x,
+                    r.bottom - overlayTopLeftWin.y
+                )
+            } else {
+                Rect.Zero
+            }
         }
     }
 
-    var dismissShowcaseRequest by remember(target) { mutableStateOf(false) }
-
-    val maxDimension =
-        max(targetCords.size.width.absoluteValue, targetCords.size.height.absoluteValue)
+    val maxDimension = max(targetRect.width.absoluteValue, targetRect.height.absoluteValue)
     val targetRadius = maxDimension / 2f + 40f
 
     val animationSpec = infiniteRepeatable<Float>(
@@ -182,14 +181,16 @@ internal fun ShowcaseContent(
 
     Box(
         modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { overlayCoords = it }
             .alpha(outerAlphaAnimatable.value)
     ) {
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(target) {
-                    detectTapGestures { tapOffeset ->
-                        if (targetRect.contains(tapOffeset)) {
+                .pointerInput(target.revision, overlayCoords) {
+                    detectTapGestures { tapOffset ->
+                        if (targetRect.contains(tapOffset)) {
                             dismissShowcaseRequest = true
                         }
                     }
@@ -230,8 +231,18 @@ internal fun ShowcaseContent(
 
         ShowCaseText(target, targetRect, targetRadius) { textCoords ->
             // Check if coordinates are still attached before accessing bounds
-            if (textCoords.isAttached) {
-                val contentRect = textCoords.boundsInWindow()
+            if (textCoords.isAttached && overlayCoords?.isAttached == true) {
+                val contentRectWindow = textCoords.boundsInWindow()
+                val overlayTopLeftWin = overlayCoords!!.positionInWindow()
+                
+                // Convert content rect to overlay local space
+                val contentRect = Rect(
+                    contentRectWindow.left - overlayTopLeftWin.x,
+                    contentRectWindow.top - overlayTopLeftWin.y,
+                    contentRectWindow.right - overlayTopLeftWin.x,
+                    contentRectWindow.bottom - overlayTopLeftWin.y
+                )
+                
                 val outerRect = getOuterRect(contentRect, targetRect)
                 outerOffset = outerRect.center
                 outerRadius = getOuterRadius(outerRect) + targetRadius
@@ -243,13 +254,13 @@ internal fun ShowcaseContent(
 
 @Composable
 private fun ShowCaseText(
-    currentTarget: IntroShowcaseTargets,
+    currentTarget: TargetInfo,
     boundsInParent: Rect,
     targetRadius: Float,
     updateContentCoordinates: (LayoutCoordinates) -> Unit
 ) {
 
-    var contentOffsetY by remember(currentTarget) { mutableFloatStateOf(0f) }
+    var contentOffsetY by remember(currentTarget.revision) { mutableFloatStateOf(0f) }
 
     Box(
         content = currentTarget.content,
@@ -293,14 +304,6 @@ private fun getOuterRadius(outerRect: Rect): Float {
 
     return (d / 2f)
 }
-
-data class IntroShowcaseTargets(
-    val index: Int,
-    val coordinates: LayoutCoordinates,
-    val style: ShowcaseStyle = ShowcaseStyle.Default,
-    val content: @Composable BoxScope.() -> Unit,
-    val revision: Long = System.currentTimeMillis() // Add revision to track updates
-)
 
 class ShowcaseStyle(
     val backgroundColor: Color = Color.Black,

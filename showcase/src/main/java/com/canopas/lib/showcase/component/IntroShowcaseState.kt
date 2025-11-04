@@ -8,6 +8,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
 /**
@@ -39,13 +42,23 @@ internal fun Modifier.introShowcaseTarget(
     style: ShowcaseStyle = ShowcaseStyle.Default,
     content: @Composable BoxScope.() -> Unit,
 ): Modifier = onGloballyPositioned { coordinates ->
-    state.targets[index] = IntroShowcaseTargets(
-        index = index,
-        coordinates = coordinates,
-        style = style,
-        content = content,
-        revision = System.currentTimeMillis() // Update revision when coordinates change
-    )
+    if (!coordinates.isAttached) return@onGloballyPositioned
+    
+    val rootRect = coordinates.boundsInRoot()
+    val winRect = coordinates.boundsInWindow()
+
+    // Only update state when the rect really changed to avoid churn
+    val prev = state.targets[index]
+    if (prev == null || prev.rectInRoot != rootRect || prev.rectInWindow != winRect) {
+        state.targets[index] = TargetInfo(
+            index = index,
+            rectInRoot = rootRect,
+            rectInWindow = winRect,
+            style = style,
+            content = content,
+            revision = System.nanoTime()
+        )
+    }
 }
 
 /**
@@ -56,12 +69,12 @@ class IntroShowcaseState internal constructor(
     initialIndex: Int,
 ) {
 
-    internal var targets = mutableStateMapOf<Int, IntroShowcaseTargets>()
+    internal var targets = mutableStateMapOf<Int, TargetInfo>()
 
     var currentTargetIndex by mutableIntStateOf(initialIndex)
         internal set
 
-    val currentTarget: IntroShowcaseTargets?
+    val currentTarget: TargetInfo?
         get() = targets[currentTargetIndex]
 
     /**
@@ -71,3 +84,15 @@ class IntroShowcaseState internal constructor(
         currentTargetIndex = 0
     }
 }
+
+/**
+ * New lightweight model: store rects in both spaces to support both overlay modes.
+ */
+data class TargetInfo(
+    val index: Int,
+    val rectInRoot: Rect,
+    val rectInWindow: Rect,
+    val style: ShowcaseStyle,
+    val content: @Composable BoxScope.() -> Unit,
+    val revision: Long = System.nanoTime()
+)
